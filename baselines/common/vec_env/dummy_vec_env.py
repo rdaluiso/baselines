@@ -79,3 +79,9 @@ class DummyVecEnv(VecEnv):
             return self.envs[0].render(mode=mode)
         else:
             return super().render(mode=mode)
+
+    def theoretical_price(self):
+        if self.num_envs == 1 & hasattr(self.envs[0], 'theoretical_price'):
+            return self.envs[0].theoretical_price()
+        else:
+            return -1.

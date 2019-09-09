@@ -205,6 +205,21 @@ def main(args):
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(args)
     extra_args = parse_cmdline_kwargs(unknown_args)
+    if 'play_episodes' in extra_args.keys():
+      play_episodes = extra_args['play_episodes']
+      del extra_args['play_episodes']
+    else:
+      play_episodes = 100000
+    if 'print_episodes' in extra_args.keys():
+      print_episodes = extra_args['print_episodes']
+      del extra_args['print_episodes']
+    else:
+      print_episodes = 50
+    if 'policy_path' in extra_args.keys():
+      policy_path = extra_args['policy_path']
+      del extra_args['policy_path']
+    else:
+      policy_path = None
 
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
@@ -221,27 +236,48 @@ def main(args):
 
     if args.play:
         logger.log("Running trained model")
+#        if policy_path is not None:
+#           f = open(policy_path, 'w+')
+#           f.write('spot,consumption,time,action\n')
         obs = env.reset()
 
         state = model.initial_state if hasattr(model, 'initial_state') else None
         dones = np.zeros((1,))
 
-        episode_rew = 0
-        while True:
+        episode_rew = 0.
+        mean_rew = 0.
+        sq_rew = 0.
+
+        episode_counter = 0
+        while episode_counter < play_episodes:
             if state is not None:
                 actions, _, state, _ = model.step(obs,S=state, M=dones)
             else:
                 actions, _, _, _ = model.step(obs)
 
             obs, rew, done, _ = env.step(actions)
+#            if policy_path is not None:
+#               print('debug action = {}'.format(actions[0][0]))
+#               f.write('%f,%f,%f,%.6f\n' % (obs[0][0], obs[0][1], obs[0][2], actions[0][0]))
             episode_rew += rew[0] if isinstance(env, VecEnv) else rew
-            env.render()
             done = done.any() if isinstance(done, np.ndarray) else done
             if done:
-                print('episode_rew={}'.format(episode_rew))
-                episode_rew = 0
+                episode_counter = episode_counter + 1
+                if episode_counter < print_episodes:
+                  print('episode_rew={}'.format(episode_rew))
+                  print('_________________________________________________________________')
+                mean_rew += episode_rew / play_episodes
+                sq_rew += episode_rew * episode_rew / play_episodes
+                episode_rew = 0.
                 obs = env.reset()
+            elif episode_counter < print_episodes:
+                env.render()
 
+#        f.close()
+        print('\n\n')
+        print('*** TH price = ', env.theoretical_price())
+        print('*** MC price = ', mean_rew)
+        print('*** MC error = ', np.sqrt( (sq_rew - mean_rew * mean_rew) / play_episodes ))
     env.close()
 
     return model
