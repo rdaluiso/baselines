@@ -7,12 +7,14 @@ from collections import defaultdict
 import tensorflow as tf
 import numpy as np
 
-from baselines.common.vec_env import VecFrameStack, VecNormalize, VecEnv
+from baselines.common.vec_env import VecFrameStack, VecNormalize, VecEnv, DummyVecEnv
 from baselines.common.vec_env.vec_video_recorder import VecVideoRecorder
 from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, make_vec_env, make_env
 from baselines.common.tf_util import get_session
 from baselines import logger
 from importlib import import_module
+from contextlib import ExitStack
+import time
 
 try:
     from mpi4py import MPI
@@ -151,6 +153,7 @@ def get_default_network(env_type):
     else:
         return 'mlp'
 
+
 def get_alg_module(alg, submodule=None):
     submodule = submodule or alg
     try:
@@ -176,7 +179,6 @@ def get_learn_function_defaults(alg, env_type):
     return kwargs
 
 
-
 def parse_cmdline_kwargs(args):
     '''
     convert a list of '='-spaced command-line arguments to a dictionary, evaluating python objects when possible
@@ -189,7 +191,7 @@ def parse_cmdline_kwargs(args):
         except (NameError, SyntaxError):
             return v
 
-    return {k: parse(v) for k,v in parse_unknown_args(args).items()}
+    return {k: parse(v) for k, v in parse_unknown_args(args).items()}
 
 
 def configure_logger(log_path, **kwargs):
@@ -205,21 +207,6 @@ def main(args):
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(args)
     extra_args = parse_cmdline_kwargs(unknown_args)
-    if 'play_episodes' in extra_args.keys():
-      play_episodes = extra_args['play_episodes']
-      del extra_args['play_episodes']
-    else:
-      play_episodes = 100000
-    if 'print_episodes' in extra_args.keys():
-      print_episodes = extra_args['print_episodes']
-      del extra_args['print_episodes']
-    else:
-      print_episodes = 50
-    if 'policy_path' in extra_args.keys():
-      policy_path = extra_args['policy_path']
-      del extra_args['policy_path']
-    else:
-      policy_path = None
 
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
@@ -234,53 +221,69 @@ def main(args):
         save_path = osp.expanduser(args.save_path)
         model.save(save_path)
 
-    if args.play:
+    if args.play_episodes > 0:
         logger.log("Running trained model")
-#        if policy_path is not None:
-#           f = open(policy_path, 'w+')
-#           f.write('spot,consumption,time,action\n')
-        obs = env.reset()
+        start_time = time.time()
 
-        state = model.initial_state if hasattr(model, 'initial_state') else None
-        dones = np.zeros((1,))
+        with ExitStack() as stack:  # handling orderly resource closure
 
-        episode_rew = 0.
-        mean_rew = 0.
-        sq_rew = 0.
+            f = None
+            if args.policy_path is not None:
+               f = stack.enter_context(open(args.policy_path, 'w+'))
 
-        episode_counter = 0
-        while episode_counter < play_episodes:
-            if state is not None:
-                actions, _, state, _ = model.step(obs,S=state, M=dones)
-            else:
-                actions, _, _, _ = model.step(obs)
+            obs = env.reset()
 
-            obs, rew, done, _ = env.step(actions)
-#            if policy_path is not None:
-#               print('debug action = {}'.format(actions[0][0]))
-#               f.write('%f,%f,%f,%.6f\n' % (obs[0][0], obs[0][1], obs[0][2], actions[0][0]))
-            episode_rew += rew[0] if isinstance(env, VecEnv) else rew
-            done = done.any() if isinstance(done, np.ndarray) else done
-            if done:
-                episode_counter = episode_counter + 1
-                if episode_counter < print_episodes:
-                  print('episode_rew={}'.format(episode_rew))
-                  print('_________________________________________________________________')
-                mean_rew += episode_rew / play_episodes
-                sq_rew += episode_rew * episode_rew / play_episodes
-                episode_rew = 0.
-                obs = env.reset()
-            elif episode_counter < print_episodes:
-                env.render()
+            state = model.initial_state if hasattr(model, 'initial_state') else None
+            dones = np.zeros((1,))
 
-#        f.close()
-        print('\n\n')
-        print('*** TH price = ', env.theoretical_price())
-        print('*** MC price = ', mean_rew)
-        print('*** MC error = ', np.sqrt( (sq_rew - mean_rew * mean_rew) / play_episodes ))
+            episode_rew = 0.
+            mean_rew = 0.
+            sq_rew = 0.
+
+            episode_counter = 0
+            cycle_length = 0
+            while episode_counter < args.play_episodes:
+                if state is not None:
+                    actions, _, state, _ = model.step(obs, S=state, M=dones)
+                else:
+                    actions, _, _, _ = model.step(obs)
+
+                obs, rew, done, _ = env.step(actions)
+                if args.policy_path is not None:
+                   obs_str = ['%f,' % o for o in obs[0]] + ['%.6f,' % a for a in actions[0]]
+                   line = ','.join(obs_str)
+                   f.write(line + '\n')
+                episode_rew += np.mean(rew) if isinstance(env, VecEnv) else rew
+                done = done.any() if isinstance(done, np.ndarray) else done
+                if done:
+                    episode_counter += rew.shape[0]
+                    cycle_length += 1
+                    if episode_counter < args.print_episodes:
+                      print('episode reward (mean on {} episodes)={}'.format(rew.shape[0], episode_rew))
+                      print('_________________________________________________________________')
+                    mean_rew += episode_rew
+                    sq_rew += episode_rew * episode_rew
+                    episode_rew = 0.
+                    obs = env.reset()
+                elif rew.shape[0] == 1 and episode_counter < args.print_episodes:
+                    env.render()
+
+            mean_rew = mean_rew / cycle_length
+            sq_rew = sq_rew / cycle_length
+
+        print('\n' * int(args.print_episodes > 0))
+
+        if isinstance(env, DummyVecEnv):
+            print('*** TH price = ', env.theoretical_price())
+        if args.play_episodes > 0:
+            print('*** MC price = ', mean_rew)
+            print('*** MC error = ', np.sqrt((sq_rew - mean_rew * mean_rew) / args.play_episodes))
+            print('*** MC wall time = %.2f seconds' % (time.time() - start_time))
+
     env.close()
 
     return model
+
 
 if __name__ == '__main__':
     main(sys.argv)

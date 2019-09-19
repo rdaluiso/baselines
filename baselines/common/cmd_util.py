@@ -171,7 +171,9 @@ def common_arg_parser():
     parser.add_argument('--save_video_interval', help='Save video every x steps (0 = disabled)', default=0, type=int)
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
     parser.add_argument('--log_path', help='Directory to save learning curve data.', default=None, type=str)
-    parser.add_argument('--play', default=False, action='store_true')
+    parser.add_argument('--play_episodes', help='Number of episodes in test run. Default: 0', default=0, type=float)
+    parser.add_argument('--print_episodes', help='Number of episodes to print in test run. Default: 0', default=0, type=int)
+    parser.add_argument('--policy_path', help='Path where environment and policy realizations are logged.', default=None, type=str)
     return parser
 
 def robotics_arg_parser():
