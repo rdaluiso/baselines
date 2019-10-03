@@ -256,7 +256,7 @@ def main(args):
                 episode_rew += np.mean(rew) if isinstance(env, VecEnv) else rew
                 done = done.any() if isinstance(done, np.ndarray) else done
                 if done:
-                    episode_counter += rew.shape[0]
+                    episode_counter += rew.size
                     cycle_length += 1
                     if episode_counter < args.print_episodes:
                       print('episode reward (mean on {} episodes)={}'.format(rew.shape[0], episode_rew))

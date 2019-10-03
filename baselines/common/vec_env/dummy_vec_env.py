@@ -85,3 +85,8 @@ class DummyVecEnv(VecEnv):
             return self.envs[0].theoretical_price()
         else:
             return -1.
+
+    def custom_agent(self, **kwargs):
+        """Return a problem-specific policy."""
+
+        return self.envs[0].custom_agent(**kwargs)

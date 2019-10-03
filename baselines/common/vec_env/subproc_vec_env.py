@@ -25,6 +25,9 @@ def worker(remote, parent_remote, env_fn_wrapper):
                 break
             elif cmd == 'get_spaces_spec':
                 remote.send((env.observation_space, env.action_space, env.spec))
+            elif cmd == 'custom_agent':
+                agent = env.custom_agent(**data)
+                remote.send(agent)
             else:
                 raise NotImplementedError
     except KeyboardInterrupt:
@@ -101,6 +104,13 @@ class SubprocVecEnv(VecEnv):
 
     def _assert_not_closed(self):
         assert not self.closed, "Trying to operate on a SubprocVecEnv after calling close()"
+
+    def custom_agent(self, **kwargs):
+        """Return a problem-specific policy."""
+
+        self.remotes[0].send(('custom_agent', kwargs))
+        agent = self.remotes[0].recv()
+        return agent
 
     def __del__(self):
         if not self.closed:
