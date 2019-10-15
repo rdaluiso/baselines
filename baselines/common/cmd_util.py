@@ -173,6 +173,7 @@ def common_arg_parser():
     parser.add_argument('--log_path', help='Directory to save learning curve data.', default=None, type=str)
     parser.add_argument('--play_episodes', help='Number of episodes in test run. Default: 0', default=0, type=float)
     parser.add_argument('--print_episodes', help='Number of episodes to print in test run. Default: 0', default=0, type=int)
+    parser.add_argument('--print_period', help='Print a message every print_period cycles of num_env episodes. Default: 0', default=0, type=int)
     parser.add_argument('--policy_path', help='Path where environment and policy realizations are logged.', default=None, type=str)
     return parser
 

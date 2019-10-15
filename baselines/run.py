@@ -242,6 +242,7 @@ def main(args):
 
             episode_counter = 0
             cycle_length = 0
+            template_message = 'episodes {} to {} out of {}: mean reward={}'
             while episode_counter < args.play_episodes:
                 if state is not None:
                     actions, _, state, _ = model.step(obs, S=state, M=dones)
@@ -258,9 +259,11 @@ def main(args):
                 if done:
                     episode_counter += rew.size
                     cycle_length += 1
-                    if episode_counter < args.print_episodes:
-                      print('episode reward (mean on {} episodes)={}'.format(rew.shape[0], episode_rew))
-                      print('_________________________________________________________________')
+                    starting_episode = episode_counter < args.print_episodes
+                    periodic_episode = args.print_period > 0 and cycle_length % args.print_period == 0
+                    if starting_episode or periodic_episode:
+                       print(template_message.format(episode_counter+1-rew.shape[0], episode_counter+1, args.play_episodes, episode_rew))
+                       print('_________________________________________________________________')
                     mean_rew += episode_rew
                     sq_rew += episode_rew * episode_rew
                     episode_rew = 0.
