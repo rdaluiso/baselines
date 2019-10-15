@@ -225,6 +225,14 @@ def main(args):
         logger.log("Running trained model")
         start_time = time.time()
 
+        try:
+            with tf.variable_scope('ppo2_model', reuse=True):
+                logstd = tf.get_variable(name='pi/logstd')
+                ass = tf.assign(logstd, np.full(logstd.shape,  -np.inf))
+                model.sess.run(ass)
+        except:
+            pass
+
         with ExitStack() as stack:  # handling orderly resource closure
 
             f = None
