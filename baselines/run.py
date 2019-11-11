@@ -244,9 +244,10 @@ def main(args):
             state = model.initial_state if hasattr(model, 'initial_state') else None
             dones = np.zeros((1,))
 
-            episode_rew = 0.
-            mean_rew = 0.
-            sq_rew = 0.
+            episode_rew = 0.   # batch average reward
+            mean_rew = 0.      # average reward
+            sq_rew = 0.        # second moment of batch averages
+            mean_var_rew = 0.  # mean of batch variances
 
             episode_counter = 0
             cycle_length = 0
@@ -263,6 +264,7 @@ def main(args):
                    line = ','.join(obs_str)
                    f.write(line + '\n')
                 episode_rew += np.mean(rew) if isinstance(env, VecEnv) else rew
+                mean_var_rew += np.var(rew) if isinstance(env, VecEnv) else 0.
                 done = done.any() if isinstance(done, np.ndarray) else done
                 if done:
                     episode_counter += rew.size
@@ -280,6 +282,7 @@ def main(args):
                     env.render()
 
             mean_rew = mean_rew / cycle_length
+            mean_var_rew = mean_var_rew / cycle_length
             sq_rew = sq_rew / cycle_length
 
         print('\n' * int(args.print_episodes > 0))
@@ -287,8 +290,9 @@ def main(args):
         if isinstance(env, DummyVecEnv):
             print('*** TH price = ', env.theoretical_price())
         if args.play_episodes > 0:
+            total_var_rew = sq_rew - mean_rew * mean_rew + mean_var_rew  # variance of means plus mean of variances
             print('*** MC price = ', mean_rew)
-            print('*** MC error = ', np.sqrt((sq_rew - mean_rew * mean_rew) / args.play_episodes))
+            print('*** MC error = ', np.sqrt(total_var_rew / args.play_episodes))
             print('*** MC wall time = %.2f seconds' % (time.time() - start_time))
 
     env.close()
