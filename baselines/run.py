@@ -201,6 +201,16 @@ def configure_logger(log_path, **kwargs):
         logger.configure(**kwargs)
 
 
+def remove_train_noise(model):
+    try:
+        with tf.variable_scope('ppo2_model', reuse=True):
+            logstd = tf.get_variable(name='pi/logstd')
+            ass = tf.assign(logstd, np.full(logstd.shape, -np.inf))
+            model.sess.run(ass)
+    except:
+        pass
+
+
 def main(args):
     # configure logger, disable logging in child MPI processes (with rank > 0)
 
@@ -224,14 +234,7 @@ def main(args):
     if args.play_episodes > 0:
         logger.log("Running trained model")
         start_time = time.time()
-
-        try:
-            with tf.variable_scope('ppo2_model', reuse=True):
-                logstd = tf.get_variable(name='pi/logstd')
-                ass = tf.assign(logstd, np.full(logstd.shape,  -np.inf))
-                model.sess.run(ass)
-        except:
-            pass
+        remove_train_noise(model)
 
         with ExitStack() as stack:  # handling orderly resource closure
 
