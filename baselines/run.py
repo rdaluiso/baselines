@@ -247,10 +247,10 @@ def main(args):
             state = model.initial_state if hasattr(model, 'initial_state') else None
             dones = np.zeros((1,))
 
-            episode_rew = 0.   # batch average reward
-            mean_rew = 0.      # average reward
-            sq_rew = 0.        # second moment of batch averages
-            mean_var_rew = 0.  # mean of batch variances
+            episode_rew = 0.       # batch average reward
+            mean_rew = 0.          # average reward
+            mean_sq_batch_avg = 0. # second moment of batch averages
+            mean_batch_var = 0.    # mean of batch variances
 
             episode_counter = 0
             cycle_length = 0
@@ -266,34 +266,36 @@ def main(args):
                    obs_str = ['%f,' % o for o in obs[0]] + ['%.6f,' % a for a in actions[0]]
                    line = ','.join(obs_str)
                    f.write(line + '\n')
-                episode_rew += np.mean(rew) if isinstance(env, VecEnv) else rew
-                mean_var_rew += np.var(rew) if isinstance(env, VecEnv) else 0.
+                episode_rew += rew if isinstance(env, VecEnv) else rew
                 done = done.any() if isinstance(done, np.ndarray) else done
                 if done:
                     episode_counter += rew.size
                     cycle_length += 1
                     starting_episode = episode_counter < args.print_episodes
                     periodic_episode = args.print_period > 0 and cycle_length % args.print_period == 0
+                    batch_mean = np.mean(episode_rew)
+                    batch_var = np.var(episode_rew) if isinstance(env, VecEnv) else 0.
                     if starting_episode or periodic_episode:
-                       print(template_message.format(episode_counter+1-rew.shape[0], episode_counter+1, args.play_episodes, episode_rew))
+                       print(template_message.format(episode_counter+1-rew.shape[0], episode_counter+1, args.play_episodes, batch_mean))
                        print('_________________________________________________________________')
-                    mean_rew += episode_rew
-                    sq_rew += episode_rew * episode_rew
+                    mean_rew += batch_mean
+                    mean_batch_var += batch_var
+                    mean_sq_batch_avg += batch_mean * batch_mean
                     episode_rew = 0.
                     obs = env.reset()
                 elif rew.shape[0] == 1 and episode_counter < args.print_episodes:
                     env.render()
 
             mean_rew = mean_rew / cycle_length
-            mean_var_rew = mean_var_rew / cycle_length
-            sq_rew = sq_rew / cycle_length
+            mean_batch_var = mean_batch_var / cycle_length
+            mean_sq_batch_avg = mean_sq_batch_avg / cycle_length
 
         print('\n' * int(args.print_episodes > 0))
 
         if isinstance(env, DummyVecEnv):
             print('*** TH price = ', env.theoretical_price())
         if args.play_episodes > 0:
-            total_var_rew = sq_rew - mean_rew * mean_rew + mean_var_rew  # variance of means plus mean of variances
+            total_var_rew = mean_sq_batch_avg - mean_rew * mean_rew + mean_batch_var  # variance of means plus mean of variances
             print('*** MC price = ', mean_rew)
             print('*** MC error = ', np.sqrt(total_var_rew / args.play_episodes))
             print('*** MC wall time = %.2f seconds' % (time.time() - start_time))
