@@ -72,6 +72,9 @@ def train(args, extra_args):
     else:
         if alg_kwargs.get('network') is None:
             alg_kwargs['network'] = get_default_network(env_type)
+            
+    if args.init_logstd:
+        alg_kwargs['init_logstd'] = args.init_logstd
 
     print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
 
@@ -201,14 +204,17 @@ def configure_logger(log_path, **kwargs):
         logger.configure(**kwargs)
 
 
-def remove_train_noise(model):
+def set_train_noise(model, log_value):
     try:
         with tf.variable_scope('ppo2_model', reuse=True):
             logstd = tf.get_variable(name='pi/logstd')
-            ass = tf.assign(logstd, np.full(logstd.shape, -np.inf))
+            ass = tf.assign(logstd, np.full(logstd.shape, log_value))
             model.sess.run(ass)
     except:
         pass
+
+def remove_train_noise(model):
+    set_train_noise(model, -np.inf)
 
 
 def main(args):
@@ -217,7 +223,7 @@ def main(args):
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(args)
     extra_args = parse_cmdline_kwargs(unknown_args)
-
+    
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
         configure_logger(args.log_path)
