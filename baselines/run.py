@@ -214,7 +214,11 @@ def set_train_noise(model, log_value):
         pass
 
 def remove_train_noise(model):
-    set_train_noise(model, -np.inf)
+    # set_train_noise(model, -np.inf)
+    model.act_model.pd.remove_noise = True
+    model.train_model.pd.remove_noise = True
+    model.act_model.action = model.act_model.pd.sample()
+    model.train_model.action = model.train_model.pd.sample()
 
 
 def main(args):

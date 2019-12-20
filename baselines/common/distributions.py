@@ -197,8 +197,11 @@ class CategoricalPd(Pd):
         p0 = ea0 / z0
         return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=-1)
     def sample(self):
-        u = tf.random_uniform(tf.shape(self.logits), dtype=self.logits.dtype)
-        return tf.argmax(self.logits - tf.log(-tf.log(u)), axis=-1)
+        if self.remove_noise:
+            return tf.argmax(self.logits, axis=-1)
+        else:
+            u = tf.random_uniform(tf.shape(self.logits), dtype=self.logits.dtype)
+            return tf.argmax(self.logits - tf.log(-tf.log(u)), axis=-1)
     @classmethod
     def fromflat(cls, flat):
         return cls(flat)
@@ -245,7 +248,10 @@ class DiagGaussianPd(Pd):
     def entropy(self):
         return tf.reduce_sum(self.logstd + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
     def sample(self):
-        return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+        if self.remove_noise:
+            return self.mean
+        else:
+            return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
     @classmethod
     def fromflat(cls, flat):
         return cls(flat)
