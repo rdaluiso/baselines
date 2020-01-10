@@ -153,6 +153,7 @@ class BernoulliPdType(PdType):
 class CategoricalPd(Pd):
     def __init__(self, logits):
         self.logits = logits
+        self.remove_noise = False
     def flatparam(self):
         return self.logits
     def mode(self):
@@ -234,6 +235,7 @@ class DiagGaussianPd(Pd):
         self.mean = mean
         self.logstd = logstd
         self.std = tf.exp(logstd)
+        self.remove_noise = False
     def flatparam(self):
         return self.flat
     def mode(self):
