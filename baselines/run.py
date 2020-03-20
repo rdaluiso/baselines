@@ -52,7 +52,7 @@ _game_envs['retro'] = {
 }
 
 
-def train(args, extra_args):
+def train(args, extra_args, env_kwargs=None):
     env_type, env_id = get_env_type(args)
     print('env_type: {}'.format(env_type))
 
@@ -63,7 +63,7 @@ def train(args, extra_args):
     alg_kwargs = get_learn_function_defaults(args.alg, env_type)
     alg_kwargs.update(extra_args)
 
-    env = build_env(args)
+    env = build_env(args, env_kwargs=env_kwargs)
     if args.save_video_interval != 0:
         env = VecVideoRecorder(env, osp.join(logger.get_dir(), "videos"), record_video_trigger=lambda x: x % args.save_video_interval == 0, video_length=args.save_video_length)
 
@@ -88,7 +88,7 @@ def train(args, extra_args):
     return model, env
 
 
-def build_env(args):
+def build_env(args, env_kwargs):
     ncpu = multiprocessing.cpu_count()
     if sys.platform == 'darwin': ncpu //= 2
     nenv = args.num_env or ncpu
@@ -99,12 +99,12 @@ def build_env(args):
 
     if env_type in {'atari', 'retro'}:
         if alg == 'deepq':
-            env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_stack': True})
+            env = make_env(env_id, env_type, seed=seed, env_kwargs=env_kwargs, wrapper_kwargs={'frame_stack': True})
         elif alg == 'trpo_mpi':
-            env = make_env(env_id, env_type, seed=seed)
+            env = make_env(env_id, env_type, seed=seed, env_kwargs=env_kwargs)
         else:
             frame_stack_size = 4
-            env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)
+            env = make_vec_env(env_id, env_type, nenv, seed, env_kwargs=env_kwargs, gamestate=args.gamestate, reward_scale=args.reward_scale)
             env = VecFrameStack(env, frame_stack_size)
 
     else:
@@ -115,7 +115,7 @@ def build_env(args):
         get_session(config=config)
 
         flatten_dict_observations = alg not in {'her'}
-        env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
+        env = make_vec_env(env_id, env_type, args.num_env or 1, seed, env_kwargs=env_kwargs, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
 
         if env_type == 'mujoco':
             env = VecNormalize(env, use_tf=True)
@@ -215,11 +215,11 @@ def set_train_noise(model, log_value):
 
 def remove_train_noise(model):
     # set_train_noise(model, -np.inf)
-    model.act_model.pd.remove_noise = True
-    model.train_model.pd.remove_noise = True
-    model.act_model.action = model.act_model.pd.sample()
-    model.train_model.action = model.train_model.pd.sample()
-
+    if hasattr(model, 'act_model'):
+        model.act_model.pd.remove_noise = True
+        model.train_model.pd.remove_noise = True
+        model.act_model.action = model.act_model.pd.sample()
+        model.train_model.action = model.train_model.pd.sample()
 
 def main(args):
     # configure logger, disable logging in child MPI processes (with rank > 0)
